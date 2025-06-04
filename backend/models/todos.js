@@ -1,24 +1,34 @@
 const db = require("../db");
 
 // Lấy tất cả todos với filter
-function getTodos(filter = "all") {
-  let query = db.table("todos").select("*").orderBy("created_at", "desc");
-
-  if (filter === "completed") {
-    query = query.where("is_completed", 1);
-  } else if (filter === "pending") {
-    query = query.where("is_completed", 0);
-  }
-
-  return query.then((todos) => {
-    // Transform is_completed thành completed cho frontend
-    return todos.map((todo) => ({
+async function getTodos(filter = "all", page = 1, perPage = 10) {
+  try {
+    let query = db.table("todos").select("*");
+    let countQuery = db.table("todos");
+    if (filter === "completed") {
+      query = query.where("is_completed", 1);
+      countQuery = countQuery.where("is_completed", 1);
+    } else if (filter === "pending") {
+      query = query.where("is_completed", 0);
+      countQuery = countQuery.where("is_completed", 0);
+    }
+    const [{ count: total }] = await countQuery.count("* as count");
+    const offset = (page - 1) * perPage;
+    const todos = await query.orderBy("created_at", "desc").limit(perPage).offset(offset);
+    const transformedTodos = todos.map((todo) => ({
       ...todo,
       completed: Boolean(todo.is_completed),
-      // Xóa trường is_completed để tránh confusion
       is_completed: undefined,
     }));
-  });
+
+    return {
+      todos: transformedTodos,
+      total: parseInt(total),
+    };
+  } catch (error) {
+    console.error("Error in getTodos model:", error);
+    throw error;
+  }
 }
 
 // Lấy todo theo ID
@@ -30,8 +40,6 @@ function getById(id) {
     .first()
     .then((todo) => {
       if (!todo) return null;
-
-      // Transform is_completed thành completed
       return {
         ...todo,
         completed: Boolean(todo.is_completed),
@@ -46,7 +54,7 @@ function createTodo(todo) {
     ...todo,
     created_at: new Date(),
     updated_at: new Date(),
-    is_completed: 0, // Sử dụng is_completed thay vì completed
+    is_completed: 0,
   };
 
   return db

@@ -16,23 +16,21 @@
                 <div class="todo-info">
                     <div v-if="todo.due_date" class="due-date"
                         :class="{ overdue: isOverdue(todo.due_date) && !todo.completed }">
-                        {{ formatDate(todo.due_date) }}
-                        <span v-if="isOverdue(todo.due_date) && !todo.completed"> (Quá
-                            hạn)</span>
+                        Ngày hết hạn : {{ formatDate(todo.due_date) }}
+                        <span v-if="isOverdue(todo.due_date) && !todo.completed"> (Quá hạn)</span>
                     </div>
                     <div class="created-date">
                         Tạo lúc: {{ formatDateTime(todo.created_at) }}
                     </div>
                 </div>
                 <div class="todo-actions">
-                    <button class="btn btn-success" @click="$emit('toggle-complete', todo.id)" :disabled="isUpdating">
-                        {{ isUpdating ? '⏳' : (todo.completed ? 'Hoàn tác' : 'Hoàn thành')
-                        }}
+                    <button class="btn btn-success" @click="toggleComplete" :disabled="isUpdating">
+                        {{ isUpdating ? '⏳' : (todo.completed ? 'Hoàn tác' : 'Hoàn thành') }}
                     </button>
                     <button class="btn btn-warning" @click="startEdit" :disabled="isUpdating">
                         Sửa
                     </button>
-                    <button class="btn btn-danger" @click="$emit('delete-todo', todo.id)" :disabled="isUpdating">
+                    <button class="btn btn-danger" @click="deleteTodo" :disabled="isUpdating">
                         {{ isUpdating ? '⏳' : 'Xóa' }}
                     </button>
                 </div>
@@ -55,7 +53,7 @@
             </div>
             <div class="edit-actions">
                 <button class="btn btn-success" @click="saveEdit" :disabled="isUpdating">
-                    {{ isUpdating ? 'Đang lưu...' : 'Lưu' }}
+                    {{ isUpdating ? '⏳ Đang lưu...' : 'Lưu' }}
                 </button>
                 <button class="btn btn-danger" @click="cancelEdit" :disabled="isUpdating">
                     Hủy
@@ -66,21 +64,21 @@
 </template>
 
 <script>
+import { eventBus, EVENTS } from '../eventBus';
+import { todoAPI } from '../services/api.js';
+
 export default {
     name: 'TodoItem',
     props: {
         todo: {
             type: Object,
             required: true
-        },
-        isUpdating: {
-            type: Boolean,
-            default: false
         }
     },
     data() {
         return {
             isEditing: false,
+            isUpdating: false,
             editForm: {
                 title: '',
                 description: '',
@@ -89,6 +87,46 @@ export default {
         };
     },
     methods: {
+        async toggleComplete() {
+            try {
+                this.isUpdating = true;
+                const response = await todoAPI.toggleComplete(this.todo.id);
+
+                // Emit event để update item trong list
+                eventBus.emit(EVENTS.ITEM_TOGGLE_COMPLETE, {
+                    id: this.todo.id,
+                    data: response.data
+                });
+
+                eventBus.emit('showSuccess', response.message);
+            } catch (error) {
+                eventBus.emit('showError', error.message);
+            } finally {
+                this.isUpdating = false;
+            }
+        },
+
+        async deleteTodo() {
+            if (!confirm('Bạn có chắc chắn muốn xóa công việc này không?')) {
+                return;
+            }
+
+            try {
+                this.isUpdating = true;
+                await todoAPI.delete(this.todo.id);
+                eventBus.emit(EVENTS.ITEM_DELETED, {
+                    id: this.todo.id,
+                    todo: this.todo
+                });
+
+                eventBus.emit('showSuccess', '🗑️ Đã xóa công việc thành công!');
+            } catch (error) {
+                eventBus.emit('showError', error.message);
+            } finally {
+                this.isUpdating = false;
+            }
+        },
+
         startEdit() {
             this.isEditing = true;
             this.editForm = {
@@ -98,20 +136,32 @@ export default {
             };
         },
 
-        saveEdit() {
+        async saveEdit() {
             if (!this.editForm.title.trim()) {
-                this.$emit('show-error', 'Tiêu đề không được để trống');
+                eventBus.emit('showError', 'Tiêu đề không được để trống');
                 return;
             }
+            try {
+                this.isUpdating = true;
+                const todoData = {
+                    title: this.editForm.title.trim(),
+                    description: this.editForm.description.trim() || null,
+                    due_date: this.editForm.due_date || null
+                };
 
-            const todoData = {
-                title: this.editForm.title.trim(),
-                description: this.editForm.description.trim() || null,
-                due_date: this.editForm.due_date || null
-            };
+                const response = await todoAPI.update(this.todo.id, todoData);
+                eventBus.emit(EVENTS.ITEM_UPDATED, {
+                    id: this.todo.id,
+                    data: response.data
+                });
 
-            this.$emit('save-edit', this.todo.id, todoData);
-            this.isEditing = false;
+                this.isEditing = false;
+                eventBus.emit('showSuccess', 'Đã cập nhật công việc thành công!');
+            } catch (error) {
+                eventBus.emit('showError', error.message);
+            } finally {
+                this.isUpdating = false;
+            }
         },
 
         cancelEdit() {

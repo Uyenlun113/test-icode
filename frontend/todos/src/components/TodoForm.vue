@@ -24,16 +24,14 @@
 </template>
 
 <script>
+import { eventBus, EVENTS } from '../eventBus';
+import { todoAPI } from '../services/api.js';
+
 export default {
     name: 'TodoForm',
-    props: {
-        loading: {
-            type: Boolean,
-            default: false
-        }
-    },
     data() {
         return {
+            loading: false,
             form: {
                 title: '',
                 description: '',
@@ -42,16 +40,29 @@ export default {
         };
     },
     methods: {
-        handleSubmit() {
+        async handleSubmit() {
             if (!this.form.title.trim()) return;
 
-            const todoData = {
-                title: this.form.title.trim(),
-                description: this.form.description.trim() || null,
-                due_date: this.form.due_date || null
-            };
+            try {
+                this.loading = true;
 
-            this.$emit('add-todo', todoData);
+                const todoData = {
+                    title: this.form.title.trim(),
+                    description: this.form.description.trim() || null,
+                    due_date: this.form.due_date || null
+                };
+                const response = await todoAPI.create(todoData);
+                if (response.data) {
+                    eventBus.emit(EVENTS.ITEM_CREATED, response.data);
+                    this.resetForm();
+                    eventBus.emit('showSuccess', 'Đã thêm công việc mới thành công!');
+                }
+            } catch (error) {
+                console.error('Create todo error:', error);
+                eventBus.emit('showError', error.message);
+            } finally {
+                this.loading = false;
+            }
         },
 
         resetForm() {

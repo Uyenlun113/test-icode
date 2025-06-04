@@ -39,10 +39,14 @@ api.interceptors.response.use(
 // Todo API methods
 export const todoAPI = {
   // Lấy tất cả todos
-  async getAll(filter = "all") {
+  async getAll(filter = "all", page = 1, perPage = 3) {
     try {
       const response = await api.get("/todos", {
-        params: { filter },
+        params: {
+          filter,
+          page,
+          per_page: perPage,
+        },
       });
       return response.data;
     } catch (error) {

@@ -11,7 +11,7 @@
             {{ successMessage }}
             <button @click="clearMessages" class="close-btn">✕</button>
         </div>
-        <TodoForm :loading="addingTodo" @add-todo="addTodo" ref="todoForm" />
+        <TodoForm />
         <div v-if="stats" class="filter-section">
             <button class="filter-btn" :class="{ active: currentFilter === 'all' }" @click="setFilter('all')"
                 :disabled="loadingTodos">
@@ -26,17 +26,48 @@
                 Đã hoàn thành ({{ stats.completed }})
             </button>
         </div>
+        <div v-if="pagination.totalPages > 1" class="pagination-section">
+            <div class="pagination-info">
+                Hiển thị {{ (pagination.currentPage - 1) * pagination.perPage + 1 }} -
+                {{ Math.min(pagination.currentPage * pagination.perPage, pagination.total) }}
+                trong tổng số {{ pagination.total }} công việc
+            </div>
+            <div class="pagination-controls">
+                <button class="pagination-btn" @click="goToPage(1)"
+                    :disabled="pagination.currentPage === 1 || loadingTodos">
+                    ⏮️
+                </button>
+                <span class="pagination-current">
+                    {{ pagination.currentPage }} / {{ pagination.totalPages }}
+                </span>
+                <button class="pagination-btn" @click="goToPage(pagination.totalPages)"
+                    :disabled="pagination.currentPage === pagination.totalPages || loadingTodos">
+                    ⏭️
+                </button>
+            </div>
+            <div class="items-per-page">
+                <label>
+                    Hiển thị:
+                    <select v-model="pagination.perPage" @change="changePerPage" :disabled="loadingTodos">
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                    mục/trang
+                </label>
+            </div>
+        </div>
+
         <div v-if="loadingTodos && todos.length === 0" class="loading-container">
-            Đang tải dữ liệu...
+            ⏳ Đang tải dữ liệu...
         </div>
         <div v-else class="todo-list">
             <transition-group name="todo" tag="div">
-                <TodoItem v-for="todo in filteredTodos" :key="todo.id" :todo="todo"
-                    :is-updating="updatingTodos.includes(todo.id)" @toggle-complete="toggleComplete"
-                    @delete-todo="deleteTodo" @save-edit="saveEdit" @show-error="showError" />
+                <TodoItem v-for="todo in todos" :key="todo.id" :todo="todo" />
             </transition-group>
         </div>
-        <div v-if="!loadingTodos && filteredTodos.length === 0" class="empty-state">
+        <div v-if="!loadingTodos && todos.length === 0" class="empty-state">
             <h3>{{ getEmptyStateMessage() }}</h3>
             <p>{{ getEmptyStateSubMessage() }}</p>
         </div>
@@ -46,6 +77,7 @@
 <script>
 import TodoForm from './components/TodoForm.vue';
 import TodoItem from './components/TodoItem.vue';
+import { eventBus, EVENTS } from './eventBus';
 import { todoAPI } from './services/api.js';
 
 export default {
@@ -60,23 +92,15 @@ export default {
             stats: null,
             currentFilter: 'all',
             loadingTodos: false,
-            addingTodo: false,
-            updatingTodos: [],
             error: null,
-            successMessage: null
-        };
-    },
-    computed: {
-        filteredTodos() {
-            switch (this.currentFilter) {
-                case 'completed':
-                    return this.todos.filter(todo => todo.completed);
-                case 'pending':
-                    return this.todos.filter(todo => !todo.completed);
-                default:
-                    return this.todos;
+            successMessage: null,
+            pagination: {
+                currentPage: 1,
+                perPage: 10,
+                total: 0,
+                totalPages: 0
             }
-        }
+        };
     },
     methods: {
         async loadTodos() {
@@ -85,11 +109,15 @@ export default {
                 this.error = null;
 
                 const [todosResponse, statsResponse] = await Promise.all([
-                    todoAPI.getAll(this.currentFilter),
+                    todoAPI.getAll(this.currentFilter, this.pagination.currentPage, this.pagination.perPage),
                     todoAPI.getStats()
                 ]);
 
-                this.todos = todosResponse.data || [];
+                this.todos = todosResponse.data?.todos || [];
+                this.pagination = {
+                    ...this.pagination,
+                    ...todosResponse.data?.pagination
+                };
                 this.stats = statsResponse.data || { total: 0, pending: 0, completed: 0 };
             } catch (error) {
                 this.error = error.message;
@@ -99,115 +127,89 @@ export default {
             }
         },
 
-        async addTodo(todoData) {
-            try {
-                this.addingTodo = true;
-                this.error = null;
-
-                const response = await todoAPI.create(todoData);
-
-                if (response.data) {
-                    this.todos.unshift(response.data);
-
-                    if (this.stats) {
-                        this.stats.total++;
-                        this.stats.pending++;
-                    }
-
-                    this.$refs.todoForm.resetForm();
-                    this.showSuccess('✅ Đã thêm công việc mới thành công!');
-
-                    if (this.currentFilter === 'completed') {
-                        this.currentFilter = 'all';
-                    }
-                }
-            } catch (error) {
-                this.error = error.message;
-            } finally {
-                this.addingTodo = false;
-            }
-        },
-
-        async toggleComplete(id) {
-            try {
-                this.updatingTodos.push(id);
-                this.error = null;
-
-                const response = await todoAPI.toggleComplete(id);
-
-                const todoIndex = this.todos.findIndex(t => t.id === id);
-                if (todoIndex !== -1) {
-                    const oldCompleted = this.todos[todoIndex].completed;
-                    this.todos[todoIndex] = response.data;
-
-                    if (this.stats && oldCompleted !== response.data.completed) {
-                        if (response.data.completed) {
-                            this.stats.completed++;
-                            this.stats.pending--;
-                        } else {
-                            this.stats.completed--;
-                            this.stats.pending++;
-                        }
-                    }
-                }
-                this.showSuccess(response.message);
-            } catch (error) {
-                this.error = error.message;
-            } finally {
-                this.updatingTodos = this.updatingTodos.filter(todoId => todoId !== id);
-            }
-        },
-
-        async deleteTodo(id) {
-            if (!confirm('Bạn có chắc chắn muốn xóa công việc này không?')) {
-                return;
-            }
-            try {
-                this.updatingTodos.push(id);
-                this.error = null;
-                await todoAPI.delete(id);
-                const todoIndex = this.todos.findIndex(t => t.id === id);
-                if (todoIndex !== -1) {
-                    const todo = this.todos[todoIndex];
-                    this.todos.splice(todoIndex, 1);
-                    if (this.stats) {
-                        this.stats.total--;
-                        if (todo.completed) {
-                            this.stats.completed--;
-                        } else {
-                            this.stats.pending--;
-                        }
-                    }
-                }
-
-                this.showSuccess('🗑️ Đã xóa công việc thành công!');
-            } catch (error) {
-                this.error = error.message;
-            } finally {
-                this.updatingTodos = this.updatingTodos.filter(todoId => todoId !== id);
-            }
-        },
-        async saveEdit(id, todoData) {
-            try {
-                this.updatingTodos.push(id);
-                this.error = null;
-                const response = await todoAPI.update(id, todoData);
-                const todoIndex = this.todos.findIndex(t => t.id === id);
-                if (todoIndex !== -1) {
-                    this.todos[todoIndex] = response.data;
-                }
-                this.showSuccess('Đã cập nhật công việc thành công!');
-            } catch (error) {
-                this.error = error.message;
-            } finally {
-                this.updatingTodos = this.updatingTodos.filter(todoId => todoId !== id);
-            }
-        },
-
         async setFilter(filter) {
             if (this.currentFilter === filter) return;
             this.currentFilter = filter;
+            this.pagination.currentPage = 1;
             await this.loadTodos();
+        },
+
+        async goToPage(page) {
+            if (page < 1 || page > this.pagination.totalPages || page === this.pagination.currentPage) return;
+            this.pagination.currentPage = page;
+            await this.loadTodos();
+        },
+
+        async changePerPage() {
+            this.pagination.currentPage = 1;
+            await this.loadTodos();
+        },
+
+        async handleItemCreated() {
+            // Reload toàn bộ danh sách thay vì chỉnh thủ công
+            this.pagination.currentPage = 1;
+            await this.loadTodos();
+        },
+
+        handleItemUpdated({ id, data }) {
+            const todoIndex = this.todos.findIndex(t => t.id === id);
+            if (todoIndex !== -1) {
+                this.todos[todoIndex] = data;
+            }
+        },
+
+        async handleItemDeleted({ id, todo }) {
+            const todoIndex = this.todos.findIndex(t => t.id === id);
+            if (todoIndex !== -1) {
+                this.todos.splice(todoIndex, 1);
+
+                // Update stats
+                if (this.stats) {
+                    this.stats.total--;
+                    if (todo.completed) {
+                        this.stats.completed--;
+                    } else {
+                        this.stats.pending--;
+                    }
+                }
+
+                // Update pagination
+                this.pagination.total--;
+                this.pagination.totalPages = Math.ceil(this.pagination.total / this.pagination.perPage);
+
+                // Nếu không còn item ở trang hiện tại, quay lại trang trước
+                if (this.todos.length === 0 && this.pagination.currentPage > 1) {
+                    this.pagination.currentPage--;
+                    await this.loadTodos();
+                }
+            }
+        },
+
+        handleItemToggleComplete({ id, data }) {
+            const todoIndex = this.todos.findIndex(t => t.id === id);
+            if (todoIndex !== -1) {
+                const oldCompleted = this.todos[todoIndex].completed;
+                this.todos[todoIndex] = data;
+
+                // Update stats
+                if (this.stats && oldCompleted !== data.completed) {
+                    if (data.completed) {
+                        this.stats.completed++;
+                        this.stats.pending--;
+                    } else {
+                        this.stats.completed--;
+                        this.stats.pending++;
+                    }
+                }
+            }
+        },
+
+        handleShowSuccess(message) {
+            this.showSuccess(message);
+        },
+
+        handleShowError(message) {
+            this.showError(message);
         },
 
         getEmptyStateMessage() {
@@ -248,8 +250,25 @@ export default {
             this.successMessage = null;
         }
     },
+
     async mounted() {
         await this.loadTodos();
+
+        eventBus.on(EVENTS.ITEM_CREATED, this.handleItemCreated);
+        eventBus.on(EVENTS.ITEM_UPDATED, this.handleItemUpdated);
+        eventBus.on(EVENTS.ITEM_DELETED, this.handleItemDeleted);
+        eventBus.on(EVENTS.ITEM_TOGGLE_COMPLETE, this.handleItemToggleComplete);
+        eventBus.on('showSuccess', this.handleShowSuccess);
+        eventBus.on('showError', this.handleShowError);
+    },
+
+    beforeUnmount() {
+        eventBus.off(EVENTS.ITEM_CREATED, this.handleItemCreated);
+        eventBus.off(EVENTS.ITEM_UPDATED, this.handleItemUpdated);
+        eventBus.off(EVENTS.ITEM_DELETED, this.handleItemDeleted);
+        eventBus.off(EVENTS.ITEM_TOGGLE_COMPLETE, this.handleItemToggleComplete);
+        eventBus.off('showSuccess', this.handleShowSuccess);
+        eventBus.off('showError', this.handleShowError);
     }
 };
 </script>

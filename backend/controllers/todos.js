@@ -4,12 +4,27 @@ const todosModel = require("../models/todos");
 async function getTodos(req, res) {
   try {
     const filter = req.query.filter || "all";
-    const todos = await todosModel.getTodos(filter);
+    const page = parseInt(req.query.page) || 1;
+    const perPage = parseInt(req.query.per_page) || 10;
+
+    // Validate pagination parameters
+    if (page < 1) page = 1;
+    if (perPage < 1 || perPage > 100) perPage = 10;
+
+    const result = await todosModel.getTodos(filter, page, perPage);
 
     res.status(200).json({
       success: true,
       message: "Lấy danh sách todos thành công",
-      data: todos,
+      data: {
+        todos: result.todos,
+        pagination: {
+          currentPage: page,
+          perPage: perPage,
+          total: result.total,
+          totalPages: Math.ceil(result.total / perPage),
+        },
+      },
     });
   } catch (error) {
     console.error("Lỗi getTodos:", error);
@@ -53,8 +68,6 @@ async function getTodoById(req, res) {
 async function createTodo(req, res) {
   try {
     const { title, description, due_date } = req.body;
-
-    // Validation
     if (!title || title.trim() === "") {
       return res.status(400).json({
         success: false,
@@ -69,14 +82,10 @@ async function createTodo(req, res) {
     };
 
     const result = await todosModel.createTodo(todoData);
-
-    // Xử lý kết quả tùy theo DB
     let newTodo;
     if (result && result.length > 0) {
-      // PostgreSQL hoặc DB hỗ trợ returning
       newTodo = result[0];
     } else {
-      // MySQL - lấy theo insertId
       const insertId = result.insertId || result[0];
       if (insertId) {
         newTodo = await todosModel.getById(insertId);
@@ -152,10 +161,7 @@ async function updateTodo(req, res) {
 async function toggleComplete(req, res) {
   try {
     const { id } = req.params;
-
     const result = await todosModel.toggleComplete(id);
-
-    // Lấy todo đã cập nhật
     const updatedTodo = await todosModel.getById(id);
 
     if (!updatedTodo) {
@@ -194,8 +200,6 @@ async function toggleComplete(req, res) {
 async function deleteTodo(req, res) {
   try {
     const { id } = req.params;
-
-    // Kiểm tra todo có tồn tại không
     const existingTodo = await todosModel.getById(id);
     if (!existingTodo) {
       return res.status(404).json({
