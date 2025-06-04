@@ -23,55 +23,47 @@
     </div>
 </template>
 
-<script>
-import { eventBus, EVENTS } from '../eventBus';
-import { todoAPI } from '../services/api.js';
+<script setup>
+import { ref, reactive } from 'vue'
+import { eventBus, EVENTS } from '../eventBus'
+import { todoAPI } from '../services/api.js'
 
-export default {
-    name: 'TodoForm',
-    data() {
-        return {
-            loading: false,
-            form: {
-                title: '',
-                description: '',
-                due_date: ''
-            }
-        };
-    },
-    methods: {
-        async handleSubmit() {
-            if (!this.form.title.trim()) return;
+const loading = ref(false)
+const form = reactive({
+    title: '',
+    description: '',
+    due_date: ''
+})
 
-            try {
-                this.loading = true;
+const handleSubmit = async () => {
+    if (!form.title.trim()) return
 
-                const todoData = {
-                    title: this.form.title.trim(),
-                    description: this.form.description.trim() || null,
-                    due_date: this.form.due_date || null
-                };
-                const response = await todoAPI.create(todoData);
-                if (response.data) {
-                    eventBus.emit(EVENTS.ITEM_CREATED, response.data);
-                    this.resetForm();
-                    eventBus.emit('showSuccess', 'Đã thêm công việc mới thành công!');
-                }
-            } catch (error) {
-                console.error('Create todo error:', error);
-                eventBus.emit('showError', error.message);
-            } finally {
-                this.loading = false;
-            }
-        },
+    try {
+        loading.value = true
 
-        resetForm() {
-            this.form = {
-                title: '',
-                description: '',
-                due_date: ''
-            };
+        const todoData = {
+            title: form.title.trim(),
+            description: form.description.trim() || null,
+            due_date: form.due_date || null
         }
+
+        const response = await todoAPI.create(todoData)
+        if (response.data) {
+            eventBus.emit(EVENTS.ITEM_CREATED, response.data)
+            resetForm()
+            eventBus.emit('showSuccess', 'Đã thêm công việc mới thành công!')
+        }
+    } catch (error) {
+        console.error('Create todo error:', error)
+        eventBus.emit('showError', error.message)
+    } finally {
+        loading.value = false
     }
-};
+}
+
+const resetForm = () => {
+    form.title = ''
+    form.description = ''
+    form.due_date = ''
+}
 </script>

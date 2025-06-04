@@ -81,7 +81,6 @@ function updateTodo(id, todo) {
     updated_at: new Date(),
   };
 
-  // Nếu có trường completed, chuyển thành is_completed
   if ("completed" in todoData) {
     todoData.is_completed = todoData.completed ? 1 : 0;
     delete todoData.completed;
@@ -129,7 +128,6 @@ async function toggleComplete(id) {
     })
     .returning("*")
     .then((result) => {
-      // Transform kết quả trả về
       if (result && result.length > 0) {
         return result.map((todo) => ({
           ...todo,

@@ -74,201 +74,178 @@
     </div>
 </template>
 
-<script>
-import TodoForm from './components/TodoForm.vue';
-import TodoItem from './components/TodoItem.vue';
-import { eventBus, EVENTS } from './eventBus';
-import { todoAPI } from './services/api.js';
+<script setup>
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import TodoForm from './components/TodoForm.vue'
+import TodoItem from './components/TodoItem.vue'
+import { eventBus, EVENTS } from './eventBus'
+import { todoAPI } from './services/api.js'
 
-export default {
-    name: 'TodoApp',
-    components: {
-        TodoForm,
-        TodoItem
-    },
-    data() {
-        return {
-            todos: [],
-            stats: null,
-            currentFilter: 'all',
-            loadingTodos: false,
-            error: null,
-            successMessage: null,
-            pagination: {
-                currentPage: 1,
-                perPage: 10,
-                total: 0,
-                totalPages: 0
-            }
-        };
-    },
-    methods: {
-        async loadTodos() {
-            try {
-                this.loadingTodos = true;
-                this.error = null;
+const todos = ref([])
+const stats = ref(null)
+const currentFilter = ref('all')
+const loadingTodos = ref(false)
+const error = ref(null)
+const successMessage = ref(null)
 
-                const [todosResponse, statsResponse] = await Promise.all([
-                    todoAPI.getAll(this.currentFilter, this.pagination.currentPage, this.pagination.perPage),
-                    todoAPI.getStats()
-                ]);
+const pagination = reactive({
+    currentPage: 1,
+    perPage: 10,
+    total: 0,
+    totalPages: 0
+})
 
-                this.todos = todosResponse.data?.todos || [];
-                this.pagination = {
-                    ...this.pagination,
-                    ...todosResponse.data?.pagination
-                };
-                this.stats = statsResponse.data || { total: 0, pending: 0, completed: 0 };
-            } catch (error) {
-                this.error = error.message;
-                console.error('Load todos error:', error);
-            } finally {
-                this.loadingTodos = false;
-            }
-        },
+const loadTodos = async () => {
+    try {
+        loadingTodos.value = true
+        error.value = null
 
-        async setFilter(filter) {
-            if (this.currentFilter === filter) return;
-            this.currentFilter = filter;
-            this.pagination.currentPage = 1;
-            await this.loadTodos();
-        },
+        const [todosResponse, statsResponse] = await Promise.all([
+            todoAPI.getAll(currentFilter.value, pagination.currentPage, pagination.perPage),
+            todoAPI.getStats()
+        ])
 
-        async goToPage(page) {
-            if (page < 1 || page > this.pagination.totalPages || page === this.pagination.currentPage) return;
-            this.pagination.currentPage = page;
-            await this.loadTodos();
-        },
-
-        async changePerPage() {
-            this.pagination.currentPage = 1;
-            await this.loadTodos();
-        },
-
-        async handleItemCreated() {
-            // Reload toàn bộ danh sách thay vì chỉnh thủ công
-            this.pagination.currentPage = 1;
-            await this.loadTodos();
-        },
-
-        handleItemUpdated({ id, data }) {
-            const todoIndex = this.todos.findIndex(t => t.id === id);
-            if (todoIndex !== -1) {
-                this.todos[todoIndex] = data;
-            }
-        },
-
-        async handleItemDeleted({ id, todo }) {
-            const todoIndex = this.todos.findIndex(t => t.id === id);
-            if (todoIndex !== -1) {
-                this.todos.splice(todoIndex, 1);
-
-                // Update stats
-                if (this.stats) {
-                    this.stats.total--;
-                    if (todo.completed) {
-                        this.stats.completed--;
-                    } else {
-                        this.stats.pending--;
-                    }
-                }
-
-                // Update pagination
-                this.pagination.total--;
-                this.pagination.totalPages = Math.ceil(this.pagination.total / this.pagination.perPage);
-
-                // Nếu không còn item ở trang hiện tại, quay lại trang trước
-                if (this.todos.length === 0 && this.pagination.currentPage > 1) {
-                    this.pagination.currentPage--;
-                    await this.loadTodos();
-                }
-            }
-        },
-
-        handleItemToggleComplete({ id, data }) {
-            const todoIndex = this.todos.findIndex(t => t.id === id);
-            if (todoIndex !== -1) {
-                const oldCompleted = this.todos[todoIndex].completed;
-                this.todos[todoIndex] = data;
-
-                // Update stats
-                if (this.stats && oldCompleted !== data.completed) {
-                    if (data.completed) {
-                        this.stats.completed++;
-                        this.stats.pending--;
-                    } else {
-                        this.stats.completed--;
-                        this.stats.pending++;
-                    }
-                }
-            }
-        },
-
-        handleShowSuccess(message) {
-            this.showSuccess(message);
-        },
-
-        handleShowError(message) {
-            this.showError(message);
-        },
-
-        getEmptyStateMessage() {
-            switch (this.currentFilter) {
-                case 'completed':
-                    return 'Chưa có công việc nào được hoàn thành';
-                case 'pending':
-                    return 'Tuyệt vời! Bạn đã hoàn thành tất cả công việc';
-                default:
-                    return 'Chưa có công việc nào';
-            }
-        },
-
-        getEmptyStateSubMessage() {
-            switch (this.currentFilter) {
-                case 'completed':
-                    return 'Hãy hoàn thành một số công việc để xem chúng ở đây';
-                case 'pending':
-                    return 'Hãy nghỉ ngơi hoặc thêm công việc mới';
-                default:
-                    return 'Hãy thêm công việc đầu tiên của bạn';
-            }
-        },
-
-        showSuccess(message) {
-            this.successMessage = message;
-            setTimeout(() => {
-                this.successMessage = null;
-            }, 3000);
-        },
-
-        showError(message) {
-            this.error = message;
-        },
-
-        clearMessages() {
-            this.error = null;
-            this.successMessage = null;
-        }
-    },
-
-    async mounted() {
-        await this.loadTodos();
-
-        eventBus.on(EVENTS.ITEM_CREATED, this.handleItemCreated);
-        eventBus.on(EVENTS.ITEM_UPDATED, this.handleItemUpdated);
-        eventBus.on(EVENTS.ITEM_DELETED, this.handleItemDeleted);
-        eventBus.on(EVENTS.ITEM_TOGGLE_COMPLETE, this.handleItemToggleComplete);
-        eventBus.on('showSuccess', this.handleShowSuccess);
-        eventBus.on('showError', this.handleShowError);
-    },
-
-    beforeUnmount() {
-        eventBus.off(EVENTS.ITEM_CREATED, this.handleItemCreated);
-        eventBus.off(EVENTS.ITEM_UPDATED, this.handleItemUpdated);
-        eventBus.off(EVENTS.ITEM_DELETED, this.handleItemDeleted);
-        eventBus.off(EVENTS.ITEM_TOGGLE_COMPLETE, this.handleItemToggleComplete);
-        eventBus.off('showSuccess', this.handleShowSuccess);
-        eventBus.off('showError', this.handleShowError);
+        todos.value = todosResponse.data?.todos || []
+        Object.assign(pagination, todosResponse.data?.pagination || {})
+        stats.value = statsResponse.data || { total: 0, pending: 0, completed: 0 }
+    } catch (err) {
+        error.value = err.message
+        console.error('Load todos error:', err)
+    } finally {
+        loadingTodos.value = false
     }
-};
+}
+
+const setFilter = async (filter) => {
+    if (currentFilter.value === filter) return
+    currentFilter.value = filter
+    pagination.currentPage = 1
+    await loadTodos()
+}
+
+const goToPage = async (page) => {
+    if (page < 1 || page > pagination.totalPages || page === pagination.currentPage) return
+    pagination.currentPage = page
+    await loadTodos()
+}
+
+const changePerPage = async () => {
+    pagination.currentPage = 1
+    await loadTodos()
+}
+
+const handleItemCreated = async () => {
+    pagination.currentPage = 1
+    await loadTodos()
+}
+
+const handleItemUpdated = ({ id, data }) => {
+    const todoIndex = todos.value.findIndex(t => t.id === id)
+    if (todoIndex !== -1) {
+        todos.value[todoIndex] = data
+    }
+}
+
+const handleItemDeleted = async ({ id, todo }) => {
+    const todoIndex = todos.value.findIndex(t => t.id === id)
+    if (todoIndex !== -1) {
+        todos.value.splice(todoIndex, 1)
+        if (stats.value) {
+            stats.value.total--
+            if (todo.completed) {
+                stats.value.completed--
+            } else {
+                stats.value.pending--
+            }
+        }
+        pagination.total--
+        pagination.totalPages = Math.ceil(pagination.total / pagination.perPage)
+        if (todos.value.length === 0 && pagination.currentPage > 1) {
+            pagination.currentPage--
+            await loadTodos()
+        }
+    }
+}
+
+const handleItemToggleComplete = ({ id, data }) => {
+    const todoIndex = todos.value.findIndex(t => t.id === id)
+    if (todoIndex !== -1) {
+        const oldCompleted = todos.value[todoIndex].completed
+        todos.value[todoIndex] = data
+        if (stats.value && oldCompleted !== data.completed) {
+            if (data.completed) {
+                stats.value.completed++
+                stats.value.pending--
+            } else {
+                stats.value.completed--
+                stats.value.pending++
+            }
+        }
+    }
+}
+
+const handleShowSuccess = (message) => {
+    showSuccess(message)
+}
+
+const handleShowError = (message) => {
+    showError(message)
+}
+
+const getEmptyStateMessage = () => {
+    switch (currentFilter.value) {
+        case 'completed':
+            return 'Chưa có công việc nào được hoàn thành'
+        case 'pending':
+            return 'Tuyệt vời! Bạn đã hoàn thành tất cả công việc'
+        default:
+            return 'Chưa có công việc nào'
+    }
+}
+
+const getEmptyStateSubMessage = () => {
+    switch (currentFilter.value) {
+        case 'completed':
+            return 'Hãy hoàn thành một số công việc để xem chúng ở đây'
+        case 'pending':
+            return 'Hãy nghỉ ngơi hoặc thêm công việc mới'
+        default:
+            return 'Hãy thêm công việc đầu tiên của bạn'
+    }
+}
+
+const showSuccess = (message) => {
+    successMessage.value = message
+    setTimeout(() => {
+        successMessage.value = null
+    }, 3000)
+}
+
+const showError = (message) => {
+    error.value = message
+}
+
+const clearMessages = () => {
+    error.value = null
+    successMessage.value = null
+}
+
+onMounted(async () => {
+    await loadTodos()
+    eventBus.on(EVENTS.ITEM_CREATED, handleItemCreated)
+    eventBus.on(EVENTS.ITEM_UPDATED, handleItemUpdated)
+    eventBus.on(EVENTS.ITEM_DELETED, handleItemDeleted)
+    eventBus.on(EVENTS.ITEM_TOGGLE_COMPLETE, handleItemToggleComplete)
+    eventBus.on('showSuccess', handleShowSuccess)
+    eventBus.on('showError', handleShowError)
+})
+
+onUnmounted(() => {
+    eventBus.off(EVENTS.ITEM_CREATED, handleItemCreated)
+    eventBus.off(EVENTS.ITEM_UPDATED, handleItemUpdated)
+    eventBus.off(EVENTS.ITEM_DELETED, handleItemDeleted)
+    eventBus.off(EVENTS.ITEM_TOGGLE_COMPLETE, handleItemToggleComplete)
+    eventBus.off('showSuccess', handleShowSuccess)
+    eventBus.off('showError', handleShowError)
+})
 </script>

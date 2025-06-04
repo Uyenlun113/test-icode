@@ -63,163 +63,165 @@
     </div>
 </template>
 
-<script>
-import { eventBus, EVENTS } from '../eventBus';
-import { todoAPI } from '../services/api.js';
+<script setup>
+import { reactive, ref } from 'vue'
+import { eventBus, EVENTS } from '../eventBus'
+import { todoAPI } from '../services/api.js'
 
-export default {
-    name: 'TodoItem',
-    props: {
-        todo: {
-            type: Object,
-            required: true
-        }
-    },
-    data() {
-        return {
-            isEditing: false,
-            isUpdating: false,
-            editForm: {
-                title: '',
-                description: '',
-                due_date: ''
-            }
-        };
-    },
-    methods: {
-        async toggleComplete() {
-            try {
-                this.isUpdating = true;
-                const response = await todoAPI.toggleComplete(this.todo.id);
-
-                // Emit event để update item trong list
-                eventBus.emit(EVENTS.ITEM_TOGGLE_COMPLETE, {
-                    id: this.todo.id,
-                    data: response.data
-                });
-
-                eventBus.emit('showSuccess', response.message);
-            } catch (error) {
-                eventBus.emit('showError', error.message);
-            } finally {
-                this.isUpdating = false;
-            }
-        },
-
-        async deleteTodo() {
-            if (!confirm('Bạn có chắc chắn muốn xóa công việc này không?')) {
-                return;
-            }
-
-            try {
-                this.isUpdating = true;
-                await todoAPI.delete(this.todo.id);
-                eventBus.emit(EVENTS.ITEM_DELETED, {
-                    id: this.todo.id,
-                    todo: this.todo
-                });
-
-                eventBus.emit('showSuccess', '🗑️ Đã xóa công việc thành công!');
-            } catch (error) {
-                eventBus.emit('showError', error.message);
-            } finally {
-                this.isUpdating = false;
-            }
-        },
-
-        startEdit() {
-            this.isEditing = true;
-            this.editForm = {
-                title: this.todo.title,
-                description: this.todo.description || '',
-                due_date: this.formatDateForInput(this.todo.due_date)
-            };
-        },
-
-        async saveEdit() {
-            if (!this.editForm.title.trim()) {
-                eventBus.emit('showError', 'Tiêu đề không được để trống');
-                return;
-            }
-            try {
-                this.isUpdating = true;
-                const todoData = {
-                    title: this.editForm.title.trim(),
-                    description: this.editForm.description.trim() || null,
-                    due_date: this.editForm.due_date || null
-                };
-
-                const response = await todoAPI.update(this.todo.id, todoData);
-                eventBus.emit(EVENTS.ITEM_UPDATED, {
-                    id: this.todo.id,
-                    data: response.data
-                });
-
-                this.isEditing = false;
-                eventBus.emit('showSuccess', 'Đã cập nhật công việc thành công!');
-            } catch (error) {
-                eventBus.emit('showError', error.message);
-            } finally {
-                this.isUpdating = false;
-            }
-        },
-
-        cancelEdit() {
-            this.isEditing = false;
-        },
-
-        formatDate(dateString) {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                return date.toLocaleDateString('vi-VN', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                });
-            } catch (error) {
-                return dateString;
-            }
-        },
-
-        formatDateTime(dateString) {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                return date.toLocaleString('vi-VN', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-            } catch (error) {
-                return dateString;
-            }
-        },
-
-        formatDateForInput(dateString) {
-            if (!dateString) return '';
-            try {
-                const date = new Date(dateString);
-                return date.toISOString().split('T')[0];
-            } catch (error) {
-                return '';
-            }
-        },
-
-        isOverdue(dateString) {
-            if (!dateString) return false;
-            try {
-                const dueDate = new Date(dateString);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                dueDate.setHours(0, 0, 0, 0);
-                return dueDate < today;
-            } catch (error) {
-                return false;
-            }
-        }
+// Props
+const props = defineProps({
+    todo: {
+        type: Object,
+        required: true
     }
-};
+})
+
+// Reactive data
+const isEditing = ref(false)
+const isUpdating = ref(false)
+const editForm = reactive({
+    title: '',
+    description: '',
+    due_date: ''
+})
+
+// Methods
+const toggleComplete = async () => {
+    try {
+        isUpdating.value = true
+        const response = await todoAPI.toggleComplete(props.todo.id)
+
+        // Emit event để update item trong list
+        eventBus.emit(EVENTS.ITEM_TOGGLE_COMPLETE, {
+            id: props.todo.id,
+            data: response.data
+        })
+
+        eventBus.emit('showSuccess', response.message)
+    } catch (error) {
+        eventBus.emit('showError', error.message)
+    } finally {
+        isUpdating.value = false
+    }
+}
+
+const deleteTodo = async () => {
+    if (!confirm('Bạn có chắc chắn muốn xóa công việc này không?')) {
+        return
+    }
+
+    try {
+        isUpdating.value = true
+        await todoAPI.delete(props.todo.id)
+        eventBus.emit(EVENTS.ITEM_DELETED, {
+            id: props.todo.id,
+            todo: props.todo
+        })
+
+        eventBus.emit('showSuccess', '🗑️ Đã xóa công việc thành công!')
+    } catch (error) {
+        eventBus.emit('showError', error.message)
+    } finally {
+        isUpdating.value = false
+    }
+}
+
+const startEdit = () => {
+    isEditing.value = true
+    editForm.title = props.todo.title
+    editForm.description = props.todo.description || ''
+    editForm.due_date = formatDateForInput(props.todo.due_date)
+}
+
+const saveEdit = async () => {
+    if (!editForm.title.trim()) {
+        eventBus.emit('showError', 'Tiêu đề không được để trống')
+        return
+    }
+
+    try {
+        isUpdating.value = true
+        const todoData = {
+            title: editForm.title.trim(),
+            description: editForm.description.trim() || null,
+            due_date: editForm.due_date || null
+        }
+
+        const response = await todoAPI.update(props.todo.id, todoData)
+        eventBus.emit(EVENTS.ITEM_UPDATED, {
+            id: props.todo.id,
+            data: response.data
+        })
+
+        isEditing.value = false
+        eventBus.emit('showSuccess', 'Đã cập nhật công việc thành công!')
+    } catch (error) {
+        eventBus.emit('showError', error.message)
+    } finally {
+        isUpdating.value = false
+    }
+}
+
+const cancelEdit = () => {
+    isEditing.value = false
+}
+
+const formatDate = (dateString) => {
+    if (!dateString) return ''
+    try {
+        const date = new Date(dateString)
+        return date.toLocaleDateString('vi-VN', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        })
+    } catch (error) {
+        return dateString
+    }
+}
+
+const formatDateTime = (dateString) => {
+    if (!dateString) return ''
+    try {
+        const date = new Date(dateString)
+        return date.toLocaleString('vi-VN', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        })
+    } catch (error) {
+        return dateString
+    }
+}
+
+const formatDateForInput = (dateString) => {
+    if (!dateString) return ''
+    try {
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) return ''
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+
+        return `${year}-${month}-${day}`
+    } catch (error) {
+        console.error('Error formatting date for input:', error)
+        return ''
+    }
+}
+
+const isOverdue = (dateString) => {
+    if (!dateString) return false
+    try {
+        const dueDate = new Date(dateString)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        dueDate.setHours(0, 0, 0, 0)
+        return dueDate < today
+    } catch (error) {
+        return false
+    }
+}
 </script>
