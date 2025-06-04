@@ -44,7 +44,7 @@ const validateId = (req, res, next) => {
   next();
 };
 
-// Routes - Thêm /todos prefix
+
 router.get("/todos/stats", todosController.getStats);
 router.get("/todos", todosController.getTodos);
 router.get("/todos/:id", validateId, todosController.getTodoById);

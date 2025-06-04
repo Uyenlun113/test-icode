@@ -183,15 +183,19 @@ const formatDate = (dateString) => {
 const formatDateTime = (dateString) => {
     if (!dateString) return ''
     try {
-        const date = new Date(dateString)
+        let cleanDateString = dateString.replace('Z', '');
+        const date = new Date(cleanDateString)
+        if (isNaN(date.getTime())) return dateString
         return date.toLocaleString('vi-VN', {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            hour12: false
         })
     } catch (error) {
+        console.error('Error formatting datetime:', error)
         return dateString
     }
 }
