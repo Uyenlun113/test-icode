@@ -26,6 +26,20 @@
                 Đã hoàn thành ({{ stats.completed }})
             </button>
         </div>
+
+
+        <div v-if="loadingTodos && todos.length === 0" class="loading-container">
+            ⏳ Đang tải dữ liệu...
+        </div>
+        <div v-else class="todo-list">
+            <transition-group name="todo" tag="div">
+                <TodoItem v-for="todo in todos" :key="todo.id" :todo="todo" />
+            </transition-group>
+        </div>
+        <div v-if="!loadingTodos && todos.length === 0" class="empty-state">
+            <h3>{{ getEmptyStateMessage() }}</h3>
+            <p>{{ getEmptyStateSubMessage() }}</p>
+        </div>
         <div v-if="pagination.total > 0" class="pagination-section">
             <div class="pagination-info">
                 Hiển thị {{ (pagination.currentPage - 1) * pagination.perPage + 1 }} -
@@ -66,24 +80,11 @@
                 </label>
             </div>
         </div>
-
-        <div v-if="loadingTodos && todos.length === 0" class="loading-container">
-            ⏳ Đang tải dữ liệu...
-        </div>
-        <div v-else class="todo-list">
-            <transition-group name="todo" tag="div">
-                <TodoItem v-for="todo in todos" :key="todo.id" :todo="todo" />
-            </transition-group>
-        </div>
-        <div v-if="!loadingTodos && todos.length === 0" class="empty-state">
-            <h3>{{ getEmptyStateMessage() }}</h3>
-            <p>{{ getEmptyStateSubMessage() }}</p>
-        </div>
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import TodoForm from './components/TodoForm.vue'
 import TodoItem from './components/TodoItem.vue'
 import { eventBus, EVENTS } from './eventBus'
