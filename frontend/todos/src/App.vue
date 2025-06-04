@@ -26,23 +26,31 @@
                 Đã hoàn thành ({{ stats.completed }})
             </button>
         </div>
-        <div v-if="pagination.totalPages > 1" class="pagination-section">
+        <div v-if="pagination.total > 0" class="pagination-section">
             <div class="pagination-info">
                 Hiển thị {{ (pagination.currentPage - 1) * pagination.perPage + 1 }} -
                 {{ Math.min(pagination.currentPage * pagination.perPage, pagination.total) }}
                 trong tổng số {{ pagination.total }} công việc
             </div>
             <div class="pagination-controls">
+                <button class="pagination-btn" @click="goToPage(pagination.currentPage - 1)"
+                    :disabled="pagination.currentPage === 1 || loadingTodos">
+                    ⬅️ Trước
+                </button>
                 <button class="pagination-btn" @click="goToPage(1)"
                     :disabled="pagination.currentPage === 1 || loadingTodos">
                     ⏮️
                 </button>
                 <span class="pagination-current">
-                    {{ pagination.currentPage }} / {{ pagination.totalPages }}
+                    {{ pagination.currentPage }} / {{ Math.max(pagination.totalPages, 1) }}
                 </span>
                 <button class="pagination-btn" @click="goToPage(pagination.totalPages)"
-                    :disabled="pagination.currentPage === pagination.totalPages || loadingTodos">
+                    :disabled="pagination.currentPage === pagination.totalPages || loadingTodos || pagination.totalPages <= 1">
                     ⏭️
+                </button>
+                <button class="pagination-btn" @click="goToPage(pagination.currentPage + 1)"
+                    :disabled="pagination.currentPage === pagination.totalPages || loadingTodos || pagination.totalPages <= 1">
+                    Sau ➡️
                 </button>
             </div>
             <div class="items-per-page">
@@ -81,6 +89,7 @@ import TodoItem from './components/TodoItem.vue'
 import { eventBus, EVENTS } from './eventBus'
 import { todoAPI } from './services/api.js'
 
+// Reactive data
 const todos = ref([])
 const stats = ref(null)
 const currentFilter = ref('all')
@@ -95,6 +104,7 @@ const pagination = reactive({
     totalPages: 0
 })
 
+// Methods
 const loadTodos = async () => {
     try {
         loadingTodos.value = true
